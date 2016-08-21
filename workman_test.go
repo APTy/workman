@@ -221,6 +221,19 @@ func TestNoWorkReturn(t *testing.T) {
 	assert.Nil(t, err)
 }
 
+func TestNonErrorWorkReturn(t *testing.T) {
+	type nonErr interface{}
+	work := func() nonErr { return "test" }
+
+	wm, err := NewWorkManager(1)
+	assert.Nil(t, err)
+	wm.StartWorkers(work)
+	err = wm.SendWork()
+	assert.Nil(t, err)
+	err = wm.WaitForCompletion()
+	assert.Nil(t, err)
+}
+
 func TestNumArgsMismatch(t *testing.T) {
 	list := []int{1, 2, 3, 4, 5}
 	work := func(i int) {}

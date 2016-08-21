@@ -175,8 +175,8 @@ func (wm *WorkManager) work(t task) {
 	// Parse the returned error if there is one
 	if len(rv) > 0 {
 		err := rv[0]
-		if !err.IsNil() {
-			t.err = err.Interface().(error)
+		if err.Kind() == reflect.Interface && !err.IsNil() {
+			t.err, _ = err.Interface().(error)
 		}
 	}
 
