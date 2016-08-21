@@ -220,3 +220,30 @@ func TestNoWorkReturn(t *testing.T) {
 	err = wm.WaitForCompletion()
 	assert.Nil(t, err)
 }
+
+func TestNumArgsMismatch(t *testing.T) {
+	list := []int{1, 2, 3, 4, 5}
+	work := func(i int) {}
+
+	wm, err := NewWorkManager(2)
+	assert.Nil(t, err)
+	wm.StartWorkers(work)
+	for _, i := range list {
+		err := wm.SendWork(i, "badarg")
+		assert.EqualError(t, err, ErrBadWorkArgs.Error())
+	}
+	err = wm.WaitForCompletion()
+	assert.Nil(t, err)
+}
+
+func TestArgTypeMismatch(t *testing.T) {
+	work := func(i int) {}
+
+	wm, err := NewWorkManager(2)
+	assert.Nil(t, err)
+	wm.StartWorkers(work)
+	err = wm.SendWork("badarg")
+	assert.EqualError(t, err, ErrBadWorkArgs.Error())
+	err = wm.WaitForCompletion()
+	assert.Nil(t, err)
+}

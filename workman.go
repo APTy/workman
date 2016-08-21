@@ -24,6 +24,9 @@ var (
 
 	// Some workers encountered errors during processing
 	ErrWorkerErrors = errors.New("some workers encountered errors")
+
+	// Args are of the wrong type or length to be passed to the work function
+	ErrBadWorkArgs = errors.New("args can't be passed to work function")
 )
 
 // WorkManagerError stores a list of errors encountered during worker processing.
@@ -81,6 +84,9 @@ type WorkManager struct {
 	// nWorkers is the number of simultaneous goroutines to run
 	nWorkers int
 
+	// workFunc represents the function that workers run
+	workFunc reflect.Value
+
 	// tasks holds the new work, waiting to be consumed
 	tasks chan task
 
@@ -131,10 +137,11 @@ func (wm *WorkManager) StartWorkers(workFunc interface{}) error {
 	if worker.Kind() != reflect.Func {
 		return ErrInvalidWorkFuncType
 	}
+	wm.workFunc = worker
 
 	// Start goroutine workers that receive on the task queue and push to the output queue
 	for i := 0; i < wm.nWorkers; i++ {
-		go wm.work(worker)
+		go wm.work()
 	}
 
 	// Collect outputs from workers
@@ -146,7 +153,7 @@ func (wm *WorkManager) StartWorkers(workFunc interface{}) error {
 
 // work selects tasks from the task queue and calls the worker function.
 // Because it blocks, it should be invoked as a goroutine.
-func (wm *WorkManager) work(worker reflect.Value) {
+func (wm *WorkManager) work() {
 	for t := range wm.tasks {
 		// Wait on the rate limiter if required
 		if wm.isRateLimited {
@@ -160,7 +167,7 @@ func (wm *WorkManager) work(worker reflect.Value) {
 		}
 
 		// Call the work function with the args
-		rv := worker.Call(args)
+		rv := wm.workFunc.Call(args)
 
 		// Parse the returned error if there is one
 		if len(rv) > 0 {
@@ -200,6 +207,19 @@ func (wm *WorkManager) SendWork(args ...interface{}) error {
 	if wm.hasCompleted {
 		return ErrWorkCompleted
 	}
+
+	// Validate input parameters against work function
+	funcInfo := wm.workFunc.Type()
+	if len(args) != funcInfo.NumIn() {
+		return ErrBadWorkArgs
+	}
+	for i := 0; i < funcInfo.NumIn(); i++ {
+		if reflect.ValueOf(args[i]).Type() != funcInfo.In(i) {
+			return ErrBadWorkArgs
+		}
+	}
+
+	// Enqueue the task in a goroutine so that SendWork doesn't block
 	wm.wg.Add(1)
 	go func() {
 		wm.tasks <- task{args: args}
