@@ -4,6 +4,9 @@ import (
 	"errors"
 	"reflect"
 	"sync"
+
+	"golang.org/x/net/context"
+	"golang.org/x/time/rate"
 )
 
 var (
@@ -66,8 +69,15 @@ type task struct {
 // out of order or to send it work after it has already completed
 // all work.
 type WorkManager struct {
+	// ctx manages the work manager's context for requests
+	ctx context.Context
+
+	// lim handles worker rate limiting
+	lim *rate.Limiter
+
 	// wg manages final coordination among workers
 	wg sync.WaitGroup
+
 	// nWorkers is the number of simultaneous goroutines to run
 	nWorkers int
 
@@ -85,6 +95,9 @@ type WorkManager struct {
 
 	// hasCompleted indicates whether all workers have finished their work
 	hasCompleted bool
+
+	// rateLimited indicates whether workers should be rate-limited
+	isRateLimited bool
 }
 
 // start changes the work manager's state to started
@@ -102,6 +115,8 @@ func NewWorkManager(n int) (WorkManager, error) {
 	wm.nWorkers = n
 	wm.tasks = make(chan task, wm.nWorkers)
 	wm.results = make(chan task, wm.nWorkers)
+	wm.lim = rate.NewLimiter(rate.Inf, 1)
+	wm.ctx = context.Background()
 	return wm, nil
 }
 
@@ -133,6 +148,11 @@ func (wm *WorkManager) StartWorkers(workFunc interface{}) error {
 // Because it blocks, it should be invoked as a goroutine.
 func (wm *WorkManager) work(worker reflect.Value) {
 	for t := range wm.tasks {
+		// Wait on the rate limiter if required
+		if wm.isRateLimited {
+			wm.lim.Wait(wm.ctx)
+		}
+
 		// Convert the variadic task args into a slice of reflected Values
 		args := make([]reflect.Value, len(t.args))
 		for i := range t.args {
@@ -167,6 +187,12 @@ func (wm *WorkManager) collectOutputs() {
 		}
 		wm.wg.Done()
 	}
+}
+
+// SetRateLimit sets the workers to be collectively limited to r requests per second
+func (wm *WorkManager) SetRateLimit(r int) {
+	wm.lim = rate.NewLimiter(rate.Limit(r), 1)
+	wm.isRateLimited = true
 }
 
 // SendWork provides the args necessary for the workers to run their workFunc.

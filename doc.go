@@ -28,7 +28,7 @@ function with the following signature:
 Then you should send it work as follows:
 
 	wm.SendWork(10, "Townsend", true)
-	wm.SendWork(10, "Folsom/Pacific", false)
+	wm.SendWork(12, "Folsom/Pacific", false)
 
 Your function should return an error or nothing
 
@@ -45,6 +45,11 @@ during processing. Those errors can be enumerated as follows:
 			fmt.Println(e)
 		}
 	}
+
+Set a rate limit by passing an int, representing the number of allowed requests
+per second across all workers.
+
+	wm.SetRateLimit(5)
 
 Happy processing!
 */

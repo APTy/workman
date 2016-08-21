@@ -42,7 +42,7 @@ Then you should send it work as follows:
 
 ``` go
 wm.SendWork(10, "Townsend", true)
-wm.SendWork(10, "Folsom/Pacific", false)
+wm.SendWork(12, "Folsom/Pacific", false)
 ```
 
 ## Handling Errors
@@ -64,6 +64,13 @@ if err := wm.WaitForCompletion(); err != nil {
         fmt.Println(e)
     }
 }
+```
+## Rate Limiting
+
+Set a rate limit by passing an int, representing the number of allowed requests per second across all workers.
+
+``` go
+wm.SetRateLimit(5)
 ```
 
 Happy processing!
