@@ -119,46 +119,54 @@ func (wm *WorkManager) StartWorkers(workFunc interface{}) error {
 
 	// Start goroutine workers that receive on the task queue and push to the output queue
 	for i := 0; i < wm.nWorkers; i++ {
-		go func() {
-			for t := range wm.tasks {
-				// Convert the variadic task args into a slice of reflected Values
-				args := make([]reflect.Value, len(t.args))
-				for i := range t.args {
-					args[i] = reflect.ValueOf(t.args[i])
-				}
-
-				// Call the work function with the args
-				rv := worker.Call(args)
-
-				// Parse the returned error if there is one
-				if len(rv) > 0 {
-					err := rv[0]
-					if !err.IsNil() {
-						t.err = err.Interface().(error)
-					}
-				}
-
-				// Send the task into the results queue for futher processing
-				wm.results <- t
-			}
-		}()
+		go wm.work(worker)
 	}
 
-	// Start output manager to serialize access to the resulting errors slice
-	go func() {
-		for output := range wm.results {
-			if output.err != nil {
-				if wm.errors == nil {
-					wm.errors = &WorkManagerError{error: ErrWorkerErrors}
-				}
-				wm.errors.add(output.err)
-			}
-			wm.wg.Done()
-		}
-	}()
+	// Collect outputs from workers
+	go wm.collectOutputs()
 
 	wm.start()
 	return nil
+}
+
+// work selects tasks from the task queue and calls the worker function.
+// Because it blocks, it should be invoked as a goroutine.
+func (wm *WorkManager) work(worker reflect.Value) {
+	for t := range wm.tasks {
+		// Convert the variadic task args into a slice of reflected Values
+		args := make([]reflect.Value, len(t.args))
+		for i := range t.args {
+			args[i] = reflect.ValueOf(t.args[i])
+		}
+
+		// Call the work function with the args
+		rv := worker.Call(args)
+
+		// Parse the returned error if there is one
+		if len(rv) > 0 {
+			err := rv[0]
+			if !err.IsNil() {
+				t.err = err.Interface().(error)
+			}
+		}
+
+		// Send the task into the results queue for futher processing
+		wm.results <- t
+	}
+}
+
+// collectOutputs selects results from the output queue and serializes
+// the responses into the work manager's errors list
+func (wm *WorkManager) collectOutputs() {
+	for output := range wm.results {
+		if output.err != nil {
+			if wm.errors == nil {
+				wm.errors = &WorkManagerError{error: ErrWorkerErrors}
+			}
+			wm.errors.add(output.err)
+		}
+		wm.wg.Done()
+	}
 }
 
 // SendWork provides the args necessary for the workers to run their workFunc.
