@@ -141,7 +141,11 @@ func (wm *WorkManager) StartWorkers(workFunc interface{}) error {
 
 	// Start goroutine workers that receive on the task queue and push to the output queue
 	for i := 0; i < wm.nWorkers; i++ {
-		go wm.work()
+		go func() {
+			for t := range wm.tasks {
+				wm.work(t)
+			}
+		}()
 	}
 
 	// Collect outputs from workers
@@ -151,35 +155,33 @@ func (wm *WorkManager) StartWorkers(workFunc interface{}) error {
 	return nil
 }
 
-// work selects tasks from the task queue and calls the worker function.
+// work runs the work function on a discrete task
 // Because it blocks, it should be invoked as a goroutine.
-func (wm *WorkManager) work() {
-	for t := range wm.tasks {
-		// Wait on the rate limiter if required
-		if wm.isRateLimited {
-			wm.lim.Wait(wm.ctx)
-		}
-
-		// Convert the variadic task args into a slice of reflected Values
-		args := make([]reflect.Value, len(t.args))
-		for i := range t.args {
-			args[i] = reflect.ValueOf(t.args[i])
-		}
-
-		// Call the work function with the args
-		rv := wm.workFunc.Call(args)
-
-		// Parse the returned error if there is one
-		if len(rv) > 0 {
-			err := rv[0]
-			if !err.IsNil() {
-				t.err = err.Interface().(error)
-			}
-		}
-
-		// Send the task into the results queue for futher processing
-		wm.results <- t
+func (wm *WorkManager) work(t task) {
+	// Wait on the rate limiter if required
+	if wm.isRateLimited {
+		wm.lim.Wait(wm.ctx)
 	}
+
+	// Convert the variadic task args into a slice of reflected Values
+	args := make([]reflect.Value, len(t.args))
+	for i := range t.args {
+		args[i] = reflect.ValueOf(t.args[i])
+	}
+
+	// Call the work function with the args
+	rv := wm.workFunc.Call(args)
+
+	// Parse the returned error if there is one
+	if len(rv) > 0 {
+		err := rv[0]
+		if !err.IsNil() {
+			t.err = err.Interface().(error)
+		}
+	}
+
+	// Send the task into the results queue for futher processing
+	wm.results <- t
 }
 
 // collectOutputs selects results from the output queue and serializes
