@@ -4,10 +4,14 @@ import (
 	"errors"
 	"reflect"
 	"sync"
+	"time"
 
 	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
 )
+
+// defaultWorkerTimeout is the maximum allowed time a worker can run by default
+const defaultWorkerTimeout = 30 * time.Second
 
 var (
 	// The user provided an invalid number of workers
@@ -24,6 +28,9 @@ var (
 
 	// Some workers encountered errors during processing
 	ErrWorkerErrors = errors.New("some workers encountered errors")
+
+	// A worker timed out before completing its work
+	ErrWorkerTimeout = errors.New("worker timeout")
 
 	// Args are of the wrong type or length to be passed to the work function
 	ErrBadWorkArgs = errors.New("args can't be passed to work function")
@@ -72,6 +79,9 @@ type task struct {
 // out of order or to send it work after it has already completed
 // all work.
 type WorkManager struct {
+	// WorkerMaxTimeout is the maximum allowed time a worker can run
+	WorkerMaxTimeout time.Duration
+
 	// ctx manages the work manager's context for requests
 	ctx context.Context
 
@@ -123,6 +133,7 @@ func NewWorkManager(n int) (WorkManager, error) {
 	wm.results = make(chan task, wm.nWorkers)
 	wm.lim = rate.NewLimiter(rate.Inf, 1)
 	wm.ctx = context.Background()
+	wm.WorkerMaxTimeout = defaultWorkerTimeout
 	return wm, nil
 }
 
@@ -158,9 +169,11 @@ func (wm *WorkManager) StartWorkers(workFunc interface{}) error {
 // work runs the work function on a discrete task
 // Because it blocks, it should be invoked as a goroutine.
 func (wm *WorkManager) work(t task) {
+	ctx, _ := context.WithTimeout(wm.ctx, wm.WorkerMaxTimeout)
+
 	// Wait on the rate limiter if required
 	if wm.isRateLimited {
-		wm.lim.Wait(wm.ctx)
+		wm.lim.Wait(ctx)
 	}
 
 	// Convert the variadic task args into a slice of reflected Values
@@ -169,19 +182,25 @@ func (wm *WorkManager) work(t task) {
 		args[i] = reflect.ValueOf(t.args[i])
 	}
 
-	// Call the work function with the args
-	rv := wm.workFunc.Call(args)
-
+	// Call the work function wrapped in a goroutine
+	c := make(chan []reflect.Value, 1)
+	go func() { c <- wm.workFunc.Call(args) }()
+	select {
 	// Parse the returned error if there is one
-	if len(rv) > 0 {
-		err := rv[0]
-		if err.Kind() == reflect.Interface && !err.IsNil() {
-			t.err, _ = err.Interface().(error)
+	case rv := <-c:
+		if len(rv) > 0 {
+			err := rv[0]
+			if err.Kind() == reflect.Interface && !err.IsNil() {
+				t.err, _ = err.Interface().(error)
+			}
 		}
+	// Handle the case of a worker timeout
+	case <-ctx.Done():
+		t.err = ErrWorkerTimeout
 	}
-
 	// Send the task into the results queue for futher processing
 	wm.results <- t
+
 }
 
 // collectOutputs selects results from the output queue and serializes

@@ -3,6 +3,7 @@ package workman
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -259,4 +260,22 @@ func TestArgTypeMismatch(t *testing.T) {
 	assert.EqualError(t, err, ErrBadWorkArgs.Error())
 	err = wm.WaitForCompletion()
 	assert.Nil(t, err)
+}
+
+func TestWorkerTimeout(t *testing.T) {
+	work := func() { select {} }
+
+	wm, err := NewWorkManager(20)
+	wm.WorkerMaxTimeout = 10 * time.Millisecond
+
+	assert.Nil(t, err)
+	wm.StartWorkers(work)
+	for i := 0; i < 100; i++ {
+		err = wm.SendWork()
+		assert.Nil(t, err)
+	}
+	errs := wm.WaitForCompletion()
+	assert.EqualError(t, errs, ErrWorkerErrors.Error())
+	assert.EqualError(t, errs.All()[0], ErrWorkerTimeout.Error())
+
 }
