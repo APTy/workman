@@ -1,6 +1,4 @@
-# workman
-
-[godoc](https://godoc.org/github.com/APTy/workman)
+# workman [![GoDoc](https://godoc.org/github.com/APTy/workman?status.svg)](https://godoc.org/github.com/APTy/workman)
 
 Package workman provides constructs for parallel processing.
 
