@@ -244,7 +244,7 @@ func TestNumArgsMismatch(t *testing.T) {
 	wm.StartWorkers(work)
 	for _, i := range list {
 		err := wm.SendWork(i, "badarg")
-		assert.EqualError(t, err, ErrBadWorkArgs.Error())
+		assert.EqualError(t, err, ErrLenWorkArgs.Error())
 	}
 	err = wm.WaitForCompletion()
 	assert.Nil(t, err)
@@ -257,7 +257,7 @@ func TestArgTypeMismatch(t *testing.T) {
 	assert.Nil(t, err)
 	wm.StartWorkers(work)
 	err = wm.SendWork("badarg")
-	assert.EqualError(t, err, ErrBadWorkArgs.Error())
+	assert.Error(t, err, "Expected error")
 	err = wm.WaitForCompletion()
 	assert.Nil(t, err)
 }
