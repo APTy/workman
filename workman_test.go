@@ -262,6 +262,24 @@ func TestArgTypeMismatch(t *testing.T) {
 	assert.Nil(t, err)
 }
 
+type myInterface interface {
+	DoWork()
+}
+type myStruct struct {}
+func (s *myStruct) DoWork() {}
+func TestInterfaceArg(t *testing.T) {
+	work := func(s myInterface) {}
+
+	ms := &myStruct{}
+	wm, err := NewWorkManager(2)
+	assert.Nil(t, err)
+	wm.StartWorkers(work)
+	err = wm.SendWork(ms)
+	assert.Nil(t, err)
+	err = wm.WaitForCompletion()
+	assert.Nil(t, err)
+}
+
 func TestWorkerTimeout(t *testing.T) {
 	work := func() { select {} }
 

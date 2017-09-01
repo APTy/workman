@@ -236,6 +236,13 @@ func (wm *WorkManager) SendWork(args ...interface{}) error {
 	}
 	for i := 0; i < funcInfo.NumIn(); i++ {
 		if reflect.ValueOf(args[i]).Type() != funcInfo.In(i) {
+			if funcInfo.In(i).Kind() == reflect.Interface {
+				iType := reflect.New(funcInfo.In(i)).Interface()
+				iFace := reflect.TypeOf(iType).Elem()
+				if reflect.ValueOf(args[i]).Type().Implements(iFace) {
+					continue
+				}
+			}
 			return ErrBadWorkArgs
 		}
 	}
