@@ -2,6 +2,7 @@ package workman
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"sync"
 	"time"
@@ -236,7 +237,7 @@ func (wm *WorkManager) SendWork(args ...interface{}) error {
 	}
 	for i := 0; i < funcInfo.NumIn(); i++ {
 		if reflect.ValueOf(args[i]).Type() != funcInfo.In(i) {
-			return ErrBadWorkArgs
+			return errors.New(fmt.Sprintf("Bad worker arg at pos %d. expected %s got %s", i, funcInfo.In(i), reflect.ValueOf(args[i]).Type()))
 		}
 	}
 
