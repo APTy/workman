@@ -2,6 +2,7 @@ package workman
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"sync"
 	"time"
@@ -32,8 +33,8 @@ var (
 	// A worker timed out before completing its work
 	ErrWorkerTimeout = errors.New("worker timeout")
 
-	// Args are of the wrong type or length to be passed to the work function
-	ErrBadWorkArgs = errors.New("args can't be passed to work function")
+	// Args are of the wrong length to be passed to the work function
+	ErrLenWorkArgs = errors.New("args can't be passed to work function")
 )
 
 // WorkManagerError stores a list of errors encountered during worker processing.
@@ -232,11 +233,11 @@ func (wm *WorkManager) SendWork(args ...interface{}) error {
 	// Validate input parameters against work function
 	funcInfo := wm.workFunc.Type()
 	if len(args) != funcInfo.NumIn() {
-		return ErrBadWorkArgs
+		return ErrLenWorkArgs
 	}
 	for i := 0; i < funcInfo.NumIn(); i++ {
 		if reflect.ValueOf(args[i]).Type() != funcInfo.In(i) {
-			return ErrBadWorkArgs
+			return errors.New(fmt.Sprintf("Bad worker arg at pos %d. expected %s got %s", i, funcInfo.In(i), reflect.ValueOf(args[i]).Type()))
 		}
 	}
 
